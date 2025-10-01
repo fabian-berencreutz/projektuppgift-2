@@ -16,6 +16,13 @@ public class Main {
         ProductService service = new ProductService(repository);
         ProductController controller = new ProductController(jOptionMenu, service);
 
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            System.out.println("Shutting down...");
+            repository.close();
+        }));
+
         controller.start();
+
+        repository.close();
     }
 }

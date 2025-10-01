@@ -1,78 +1,120 @@
 package se.iths.fabian.webshop.repository;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.jsontype.BasicPolymorphicTypeValidator;
-import com.fasterxml.jackson.databind.jsontype.PolymorphicTypeValidator;
-import com.fasterxml.jackson.databind.type.CollectionType;
+import com.mongodb.client.MongoClient;
+import com.mongodb.client.MongoClients;
+import com.mongodb.client.MongoCollection;
+import com.mongodb.client.MongoDatabase;
+import org.bson.Document;
+import se.iths.fabian.webshop.model.Clothing;
+import se.iths.fabian.webshop.model.Electronics;
+import se.iths.fabian.webshop.model.Furniture;
 import se.iths.fabian.webshop.model.Product;
 import se.iths.fabian.webshop.ui.UI;
 
-import java.io.File;
-import java.io.IOException;
+import javax.print.Doc;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
+import static com.mongodb.client.model.Filters.eq;
+
 public class ProductRepository {
-    private static final String PRODUCTS_FILE = "products.json";
-    private final ObjectMapper objectMapper;
-    private final List<Product> products;
+    private final MongoClient mongoClient;
+    private final MongoDatabase database;
+    private final MongoCollection<Document> collection;
+
+//    private static final String PRODUCTS_FILE = "products.json";
+//    private final ObjectMapper objectMapper;
+//    private final List<Product> products;
 
     public ProductRepository() {
-        this.objectMapper = new ObjectMapper();
-        this.products = new ArrayList<>();
-        loadProducts();
+        this.mongoClient = MongoClients.create("mongodb://localhost:27017");
+        this.database = mongoClient.getDatabase("webshop");
+        this.collection = database.getCollection("products");
+        System.out.println("Connected to MongoDB!");
+
+//        this.objectMapper = new ObjectMapper();
+//        this.products = new ArrayList<>();
+//        loadProducts();
     }
 
     public void save(Product product) {
-        products.add(product);
+        Document doc = productToDocument(product);
+        collection.insertOne(doc);
+        System.out.println("Product saved to MongoDB: " + product.getTitle());
     }
 
     public List<Product> findAll() {
-        return new ArrayList<>(products);
+        List<Product> products = new ArrayList<>();
+
+        for (Document doc : collection.find()) {
+            Product product = documentToProduct(doc);
+            if (product != null) {
+                products.add(product);
+            }
+        }
+
+        return products;
     }
 
     public Optional<Product> findByArticleNumber(String articleNumber) {
-        return products.stream()
-                .filter(p -> p.getArticleNumber().equals(articleNumber))
-                .findFirst();
+        Document doc = collection.find(eq("articleNumber", articleNumber)).first();
+
+        if (doc == null) {
+            return Optional.empty();
+        }
+
+        Product product = documentToProduct(doc);
+        return Optional.ofNullable(product);
     }
 
     public boolean existsByArticleNumber(String articleNumber) {
-        return products.stream()
-                .anyMatch(p -> p.getArticleNumber().equals(articleNumber));
+        return collection.countDocuments(eq("articleNumber", articleNumber)) > 0;
     }
 
     public void saveToFile() {
-        try {
-            objectMapper.writerFor(new TypeReference<List<Product>>() {
-            })
-                    .withDefaultPrettyPrinter()
-                    .writeValue(new File(PRODUCTS_FILE), products);
-            System.out.println("Successfully saved " + products.size() + " products to file.");
-        } catch (IOException e) {
-            System.err.println("Error saving products to file: " + e.getMessage());
-        }
+        long count = collection.countDocuments();
+        System.out.println("MongoDB contains " + count + " products.");
     }
 
-    private void loadProducts() {
-        File file = new File(PRODUCTS_FILE);
+    private Document productToDocument(Product product) {
+        Document doc = new Document();
+        doc.append("type", getProductType(product));
+        doc.append("articleNumber", product.getArticleNumber());
+        doc.append("title", product.getTitle());
+        doc.append("price", product.getPrice());
+        doc.append("description", product.getDescription());
+        return doc;
+    }
 
-        if (!file.exists()) {
-            System.out.println("No existing product file found. Starting with empty product list.");
-            return;
-        }
+    private Product documentToProduct(Document doc) {
+        String type = doc.getString("type");
+        String articleNumber = doc.getString("articleNumber");
+        String title = doc.getString("title");
+        double price = doc.getDouble("price");
+        String description = doc.getString("description");
 
-        try {
-            CollectionType listType = objectMapper.getTypeFactory()
-                    .constructCollectionType(List.class, Product.class);
-            List<Product> loadedProducts = objectMapper.readValue(file, listType);
-            products.addAll(loadedProducts);
-            System.out.println("Successfully loaded " + loadedProducts.size() + " products from file.");
-        } catch (IOException e) {
-            System.err.println("Error loading products from file: " + e.getMessage());
-            System.err.println("Starting with empty product list.");
+        return switch (type) {
+            case "electronics" -> new Electronics(articleNumber, title, price, description);
+            case "furniture" -> new Furniture(articleNumber, title, price, description);
+            case "clothing" -> new Clothing(articleNumber, title, price, description);
+            default -> null;
+        };
+    }
+
+    private String getProductType(Product product) {
+        return switch (product) {
+            case Electronics e -> "electronics";
+            case Furniture f -> "furniture";
+            case Clothing c -> "clothing";
+            default -> "unknown";
+        };
+    }
+
+    public void close() {
+        if (mongoClient != null) {
+            mongoClient.close();
+            System.out.println("MongoDB connection closed.");
         }
     }
 }
