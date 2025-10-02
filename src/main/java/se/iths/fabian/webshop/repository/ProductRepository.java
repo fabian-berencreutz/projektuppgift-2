@@ -9,9 +9,7 @@ import se.iths.fabian.webshop.model.Clothing;
 import se.iths.fabian.webshop.model.Electronics;
 import se.iths.fabian.webshop.model.Furniture;
 import se.iths.fabian.webshop.model.Product;
-import se.iths.fabian.webshop.ui.UI;
 
-import javax.print.Doc;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -23,19 +21,11 @@ public class ProductRepository {
     private final MongoDatabase database;
     private final MongoCollection<Document> collection;
 
-//    private static final String PRODUCTS_FILE = "products.json";
-//    private final ObjectMapper objectMapper;
-//    private final List<Product> products;
-
     public ProductRepository() {
         this.mongoClient = MongoClients.create("mongodb://localhost:27017");
         this.database = mongoClient.getDatabase("webshop");
         this.collection = database.getCollection("products");
         System.out.println("Connected to MongoDB!");
-
-//        this.objectMapper = new ObjectMapper();
-//        this.products = new ArrayList<>();
-//        loadProducts();
     }
 
     public void save(Product product) {
